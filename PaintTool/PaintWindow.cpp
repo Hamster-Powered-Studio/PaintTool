@@ -73,7 +73,7 @@ PaintWindow::PaintWindow()
                 sf::Vector2<int> p1 = mouseLocations.front();
                 mouseLocations.pop();
                 sf::Vector2<int> p2 = mouseLocations.front();
-                DrawBetweenPoints(p1, p2);
+                DrawBetweenPoints(p2, p1);
             }
             renderTexture.display();
         }
