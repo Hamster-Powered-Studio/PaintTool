@@ -22,6 +22,7 @@ private:
     sf::Shape* shape;
     sf::RenderWindow* window;
     std::queue<sf::Vector2<int>> mouseLocations;
+    float freedrawSize = 5.0f;
     bool MouseDown = false;
 
     void DrawBetweenPoints(sf::Vector2<int> a, sf::Vector2<int> b);

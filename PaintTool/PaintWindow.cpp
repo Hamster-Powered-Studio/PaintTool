@@ -10,14 +10,15 @@
 
 PaintWindow::PaintWindow()
 {
-    shape = new sf::CircleShape(5.f);
+    shape = new sf::CircleShape(freedrawSize);
+    shape->setFillColor(sf::Color(211, 124, 170, 255));
     window = new sf::RenderWindow(sf::VideoMode(WIDTH, HEIGHT), "Paint Tool v0.1");
     
-    
+
     renderTexture.create(WIDTH, HEIGHT);
 
     window->setFramerateLimit(60);
-
+    
     
     while (window->isOpen())
     {
@@ -39,7 +40,14 @@ PaintWindow::PaintWindow()
                 while (!mouseLocations.empty())
                     mouseLocations.pop();
             }
+
+            if (event.type == sf::Event::MouseWheelMoved)
+            {
+                freedrawSize += event.mouseWheel.delta;
+                if (freedrawSize < 1) freedrawSize = 1;
+                dynamic_cast<sf::CircleShape*>(shape)->setRadius(freedrawSize);
                 
+            }
 
             if (event.type == sf::Event::KeyPressed)
             {
@@ -53,10 +61,11 @@ PaintWindow::PaintWindow()
         
         mousePos = sf::Mouse::getPosition(*window);
         
+        
         if (MouseDown)
         {
             
-            shape->setPosition(static_cast<float>(mousePos.x) - 5, static_cast<float>(mousePos.y) - 5);
+            
             renderTexture.draw(*shape);
             mouseLocations.push(mousePos);
             if (mouseLocations.size() >= 2)
@@ -70,8 +79,10 @@ PaintWindow::PaintWindow()
         }
         
         window->clear(sf::Color::White);
-        shape->setFillColor(sf::Color::Green);
         sprite.setTexture(renderTexture.getTexture());
+
+        shape->setPosition(static_cast<float>(mousePos.x) - freedrawSize, static_cast<float>(mousePos.y) - freedrawSize);
+        window->draw(*shape);
         
         window->draw(sprite);
         window->display();
@@ -96,14 +107,14 @@ std::string PaintWindow::GetDateAndTime() const
 void PaintWindow::DrawBetweenPoints(sf::Vector2<int> a, sf::Vector2<int> b)
 {
     //Get distance between two points
-    int distance = static_cast<int>(sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2)));
-    std::cout << distance << std::endl;
-    for (float i = 0; i < distance; i += 1.f)
+    int distance = static_cast<int>(sqrt(pow(a.x-freedrawSize - b.x-freedrawSize, 2) + pow(a.y-freedrawSize - b.y-freedrawSize, 2)));
+
+    //Draw a dot at every pixel between the two sampled mouse points
+    for (float i = 0; i < distance; i += freedrawSize*0.1)
     {
         float alpha = i / distance;
-        shape->setPosition(Lerp(a.x-5, b.x-5, alpha), Lerp(a.y-5, b.y-5, alpha));
+        shape->setPosition(Lerp(a.x-freedrawSize, b.x-freedrawSize, alpha), Lerp(a.y-freedrawSize, b.y-freedrawSize, alpha));
         renderTexture.draw(*shape);
-        
     }
 }
 
