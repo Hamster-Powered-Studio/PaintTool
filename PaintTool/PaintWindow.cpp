@@ -1,12 +1,9 @@
 ﻿#include "PaintWindow.h"
 #include <cmath>
 #include <cassert>
-#include <iostream>
 #include <ctime>
-
 #include <time.h>
 #include <Windows.h>
-#include <sstream>
 #include <string>
 #include "imgui_internal.h"
 
@@ -14,12 +11,8 @@
 PaintWindow::PaintWindow()
 {
     shape = new sf::CircleShape(freedrawSize);
-    sf::ContextSettings settings;
-    settings.antialiasingLevel = 8.0f;
     window = new sf::RenderWindow(sf::VideoMode(WIDTH, HEIGHT), "Paint Tool v0.1");
     window->setActive();
-
-    
     
     ImGui::SFML::Init(*window);
     ImGuiIO& io = ImGui::GetIO();
@@ -81,7 +74,7 @@ PaintWindow::PaintWindow()
             if (event.type == sf::Event::Resized)
             {
                 // update the view to the new size of the window
-                sf::FloatRect visibleArea(0, 0, event.size.width, event.size.height);
+                sf::FloatRect visibleArea(0, 0, (float)(event.size.width), (float)(event.size.height));
                 window->setView(sf::View(visibleArea));
             }
         }
@@ -120,7 +113,7 @@ PaintWindow::PaintWindow()
         
         if (ImGui::BeginCombo("Layers", Current.c_str()))
         {
-            for (int n = 0; n < Layers.size(); n++)
+            for (unsigned int n = 0; n < Layers.size(); n++)
             {
                 std::string Option = "Layer ";
                 Option.append(std::to_string(n));
@@ -151,7 +144,7 @@ PaintWindow::PaintWindow()
         (int)(circleColor[0] * 255),
         (int)(circleColor[1] * 255),
         (int)(circleColor[2] * 255),
-         *opacity * 255));
+         (int)*opacity * 255));
 
         
         window->clear(sf::Color(200, 200, 200, 255));
@@ -195,7 +188,7 @@ void PaintWindow::DrawBetweenPoints(sf::Vector2<int> a, sf::Vector2<int> b)
     int distance = static_cast<int>(sqrt(pow(a.x-freedrawSize - b.x-freedrawSize, 2) + pow(a.y-freedrawSize - b.y-freedrawSize, 2)));
 
     //Draw a dot at every pixel between the two sampled mouse points
-    for (float i = 0; i < distance; i += freedrawSize*0.1)
+    for (float i = 0; i < (float)distance; i += freedrawSize*0.1)
     {
         float alpha = i / distance;
         shape->setPosition(Lerp(a.x-freedrawSize, b.x-freedrawSize, alpha), Lerp(a.y-freedrawSize, b.y-freedrawSize, alpha));
@@ -242,6 +235,7 @@ bool PaintWindow::SaveImage()
     {
         image.draw(*layer);
     }
+    image.display();
     return image.getTexture().copyToImage().saveToFile("Saved/" + GetDateAndTime() + ".png");
     
 }
