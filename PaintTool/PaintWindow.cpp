@@ -5,8 +5,13 @@
 #include <time.h>
 #include <Windows.h>
 #include <string>
+#include <iostream>
+#include <filesystem>
+#include <fstream>
+#include "imgui_stdlib.h"
 #include "imgui_internal.h"
 
+namespace fs = std::filesystem;
 
 PaintWindow::PaintWindow()
 {
@@ -21,8 +26,7 @@ PaintWindow::PaintWindow()
     float* opacity = new float;
     *opacity = 1.f;
 
-    NewLayer()->GetRenderTexture()->clear(sf::Color::White);
-    
+    NewLayer(800, 600)->GetRenderTexture()->clear(sf::Color::White);
 
     window->setFramerateLimit(60);
     
@@ -31,7 +35,7 @@ PaintWindow::PaintWindow()
     {
         
         
-        sf::Event event;
+        sf::Event event{};
         while (window->pollEvent(event))
         {
             ImGui::SFML::ProcessEvent(event);
@@ -57,7 +61,7 @@ PaintWindow::PaintWindow()
 
             if (event.type == sf::Event::MouseWheelMoved)
             {
-                freedrawSize += event.mouseWheel.delta;
+                freedrawSize += static_cast<float>(event.mouseWheel.delta);
                 if (freedrawSize < 1) freedrawSize = 1;
                 dynamic_cast<sf::CircleShape*>(shape)->setRadius(freedrawSize);
                 
@@ -68,6 +72,10 @@ PaintWindow::PaintWindow()
                 if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LControl) && sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
                 {
                     SaveImage();
+                }
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LControl) && sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D))
+                {
+                    AtlasTextures(AtlasDimensions[0], AtlasDimensions[1], 823, 1180);
                 }
             }
 
@@ -134,17 +142,46 @@ PaintWindow::PaintWindow()
         
         if (ImGui::Button("New Layer"))
         {
-            NewLayer();
+            NewLayer(800, 600);
         }
 
         ImGui::Text("Layer Count: %i", Layers.size());
         ImGui::End();
+        
+        ImGui::Begin("Texture Atlas");
+        
+        ImGui::PushItemWidth(100);
+        ImGui::Text("Path to image folder");
+        ImGui::InputText("  ", AtlasInput, IM_ARRAYSIZE(AtlasInput));
+        ImGui::Spacing();
+        ImGui::Spacing();
+        ImGui::Spacing();
+        ImGui::Text("Atlas Dimensions");
+        ImGui::DragInt2("Rows * Columns", AtlasDimensions, 1, 1, 20);
+        ImGui::Spacing();
+        ImGui::Text("Tile Dimensions");
+        ImGui::DragInt2("x * y", TileDimensions, 1, 1, 4096);
+        ImGui::Spacing();
+        ImGui::Spacing();
+        ImGui::Text("Resolution Scale");
+        ImGui::DragFloat("    ", &AtlasResolutionScale, 0.05, 0.1, 2);
+        ImGui::Spacing();
+        ImGui::Spacing();
+        ImGui::Text("Atlas Output Folder");
+        ImGui::InputText(" ", AtlasOutput, IM_ARRAYSIZE(AtlasOutput));
+        ImGui::Spacing();
+        ImGui::Spacing();
+        ImGui::Spacing();
+        if (ImGui::Button("Generate Atlas")) AtlasTextures(AtlasDimensions[0], AtlasDimensions[1], TileDimensions[0], TileDimensions[1]);
+        ImGui::PopItemWidth();
+        ImGui::End();
 
+        
         shape->setFillColor(sf::Color(
-        (int)(circleColor[0] * 255),
-        (int)(circleColor[1] * 255),
-        (int)(circleColor[2] * 255),
-         (int)*opacity * 255));
+        static_cast<sf::Uint8>(circleColor[0] * 255),
+        static_cast<sf::Uint8>(circleColor[1] * 255),
+        static_cast<sf::Uint8>(circleColor[2] * 255),
+         static_cast<sf::Uint8>(*opacity * 255)));
 
         
         window->clear(sf::Color(200, 200, 200, 255));
@@ -188,7 +225,7 @@ void PaintWindow::DrawBetweenPoints(sf::Vector2<int> a, sf::Vector2<int> b)
     int distance = static_cast<int>(sqrt(pow(a.x-freedrawSize - b.x-freedrawSize, 2) + pow(a.y-freedrawSize - b.y-freedrawSize, 2)));
 
     //Draw a dot at every pixel between the two sampled mouse points
-    for (float i = 0; i < (float)distance; i += freedrawSize*0.1)
+    for (float i = 0; i < static_cast<float>(distance); i += freedrawSize * 0.1)
     {
         float alpha = i / distance;
         shape->setPosition(Lerp(a.x-freedrawSize, b.x-freedrawSize, alpha), Lerp(a.y-freedrawSize, b.y-freedrawSize, alpha));
@@ -196,9 +233,61 @@ void PaintWindow::DrawBetweenPoints(sf::Vector2<int> a, sf::Vector2<int> b)
     }
 }
 
-RenderLayer* PaintWindow::NewLayer()
+
+sf::RenderTexture* PaintWindow::AtlasTextures(int rows, int columns, int imageWidth, int imageHeight)
 {
-    RenderLayer* layer = new RenderLayer(800, 600);
+    std::filesystem::path in = AtlasInput;
+    std::string out = AtlasOutput;
+    
+    if (!fs::exists(in))
+    {
+        fs::create_directory(AtlasInput);
+    }
+    if (!fs::exists(out))
+    {
+        fs::create_directory(AtlasOutput);
+    }
+    
+    sf::Image TestImage;
+    int AtlasWidth = imageWidth * columns;
+    int AtlasHeight = imageHeight * rows;
+    
+    sf::RenderTexture* Atlas = new sf::RenderTexture;
+    Atlas->create(AtlasWidth * AtlasResolutionScale, AtlasHeight * AtlasResolutionScale);
+    int counter = 0;
+    for (const auto & entry : fs::directory_iterator(in))
+    {
+        
+
+        sf::Image Image;
+        if (!Image.loadFromFile(entry.path().string())) return nullptr;
+        
+        sf::Vector2u size = Image.getSize();
+        sf::Texture Tex;
+        Tex.create(size.x, size.y);
+        Tex.update(Image);
+        sf::Sprite sprite(Tex);
+        sprite.setScale(sprite.getScale() * AtlasResolutionScale);
+        
+        unsigned int imgWidth = size.x;
+        unsigned int imgHeight = size.y;
+        float posX = counter % columns * imgWidth * AtlasResolutionScale;
+        float posY = floor(counter / columns * imgHeight * AtlasResolutionScale);
+        
+        sprite.setPosition(posX, posY);
+        Atlas->draw(sprite);
+        
+        counter++;
+    }
+
+    Atlas->display();
+    Atlas->getTexture().copyToImage().saveToFile(out + "/" + GetDateAndTime() + "_ATLAS.png");
+    return Atlas;
+}
+
+RenderLayer* PaintWindow::NewLayer(int width, int height)
+{
+    RenderLayer* layer = new RenderLayer(width, height);
     Layers.push_back(layer);
     currentLayer = Layers.size() - 1;
     return layer;
@@ -236,6 +325,12 @@ bool PaintWindow::SaveImage()
         image.draw(*layer);
     }
     image.display();
+
+    if (!fs::exists("Saved"))
+    {
+        fs::create_directory("Saved");
+    }
+    
     return image.getTexture().copyToImage().saveToFile("Saved/" + GetDateAndTime() + ".png");
     
 }

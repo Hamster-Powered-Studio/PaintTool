@@ -28,7 +28,7 @@ private:
     sf::RenderWindow* window;
     std::queue<sf::Vector2<int>> mouseLocations;
 
-    int currentLayer = 0;
+    unsigned int currentLayer = 0;
     
     void DrawToLayer(RenderLayer* layer);
 
@@ -39,8 +39,15 @@ private:
     float circleColor[3] = {0.f, 0.f, 0.f};
     bool mouseMoved = false;
     void DrawBetweenPoints(sf::Vector2<int> a, sf::Vector2<int> b);
+    int AtlasDimensions[2] = {5, 5};
+    int TileDimensions[2] = {823, 1180};
+    char AtlasInput[128] = "Saved/In";
+    char AtlasOutput[128] = "Saved/Out";
+    float AtlasResolutionScale = 1.f;
+
+    sf::RenderTexture* AtlasTextures(int rows, int columns, int imageWidth, int imageHeight);
     
-    RenderLayer* NewLayer();
+    RenderLayer* NewLayer(int width, int height);
     
     static float Lerp(float a, float b, float t);
 };
