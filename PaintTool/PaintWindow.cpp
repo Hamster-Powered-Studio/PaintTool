@@ -10,27 +10,44 @@
 #include <fstream>
 #include "imgui_stdlib.h"
 #include "imgui_internal.h"
+#include <sstream>
 
 namespace fs = std::filesystem;
 
 PaintWindow::PaintWindow()
 {
     shape = new sf::CircleShape(freedrawSize);
-    window = new sf::RenderWindow(sf::VideoMode(WIDTH, HEIGHT), "Paint Tool v0.1");
+    window = new sf::RenderWindow(sf::VideoMode(Width, Height), "Paint Tool v0.1");
+    
     window->setActive();
     
     ImGui::SFML::Init(*window);
-    ImGuiIO& io = ImGui::GetIO();
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    ImGuiIO testio = ImGui::GetIO();
     
-    float* opacity = new float;
-    *opacity = 1.f;
-
-    NewLayer(800, 600)->GetRenderTexture()->clear(sf::Color::White);
-
+    io = &ImGui::GetIO();
+    
+    NewLayer(Width, Width)->GetRenderTexture()->clear(sf::Color::White);
     window->setFramerateLimit(60);
+
+    WindowLoop();
     
-    sf::Clock deltaClock;
+    ImGui::SFML::Shutdown();
+}
+
+PaintWindow::~PaintWindow()
+{
+    delete shape;
+    delete window;
+
+    for (RenderLayer* rt : Layers)
+    {
+        delete rt;
+    }
+}
+
+void PaintWindow::WindowLoop()
+{
     while (window->isOpen())
     {
         
@@ -47,7 +64,7 @@ PaintWindow::PaintWindow()
 
             if (event.type == sf::Event::MouseButtonPressed)
             {
-                if (io.WantCaptureMouse) break;
+                if (io->WantCaptureMouse) break;
                 MouseDown = true;
             }
                 
@@ -89,7 +106,7 @@ PaintWindow::PaintWindow()
 
 
         
-        if (!io.WantCaptureMouse && sf::Mouse::getPosition(*window) != mousePos)
+        if (!io->WantCaptureMouse && sf::Mouse::getPosition(*window) != mousePos)
         {
             mouseMoved = true;
             mousePos = sf::Mouse::getPosition(*window);
@@ -104,84 +121,17 @@ PaintWindow::PaintWindow()
         
         ImGui::SFML::Update(*window, deltaClock.restart());
         
+        UI_Atlas();
+        UI_ColorPicker();
+        UI_Tools();
+        UI_Debug();
         
-        ImGui::Begin("Colour Picker");
-        ImGui::ColorPicker3("Colour", circleColor);
-        ImGui::SliderFloat("Opacity", opacity, 0.f, 1.f);
-        ImGui::End();
-
-        ImGui::Begin("Debug Window");
-        ImGui::Text("Mouse Position:");
-        ImGui::Text("X: %i   Y: %i", mousePos.x, mousePos.y);
-        
-        
-        std::string Current = "Layer ";
-        Current.append(std::to_string(currentLayer));
-        
-        
-        if (ImGui::BeginCombo("Layers", Current.c_str()))
-        {
-            for (unsigned int n = 0; n < Layers.size(); n++)
-            {
-                std::string Option = "Layer ";
-                Option.append(std::to_string(n));
-                bool is_selected = (Layers[currentLayer] == Layers[n]);
-                
-                if (ImGui::Selectable(Option.c_str(), is_selected))
-                    currentLayer = n;
-                
-                if (is_selected)
-                {
-                    ImGui::SetItemDefaultFocus();
-                }
-            }
-            ImGui::EndCombo();
-        }
-
-        
-        
-        if (ImGui::Button("New Layer"))
-        {
-            NewLayer(800, 600);
-        }
-
-        ImGui::Text("Layer Count: %i", Layers.size());
-        ImGui::End();
-        
-        ImGui::Begin("Texture Atlas");
-        
-        ImGui::PushItemWidth(100);
-        ImGui::Text("Path to image folder");
-        ImGui::InputText("  ", AtlasInput, IM_ARRAYSIZE(AtlasInput));
-        ImGui::Spacing();
-        ImGui::Spacing();
-        ImGui::Spacing();
-        ImGui::Text("Atlas Dimensions");
-        ImGui::DragInt2("Rows * Columns", AtlasDimensions, 1, 1, 20);
-        ImGui::Spacing();
-        ImGui::Text("Tile Dimensions");
-        ImGui::DragInt2("x * y", TileDimensions, 1, 1, 4096);
-        ImGui::Spacing();
-        ImGui::Spacing();
-        ImGui::Text("Resolution Scale");
-        ImGui::DragFloat("    ", &AtlasResolutionScale, 0.05, 0.1, 2);
-        ImGui::Spacing();
-        ImGui::Spacing();
-        ImGui::Text("Atlas Output Folder");
-        ImGui::InputText(" ", AtlasOutput, IM_ARRAYSIZE(AtlasOutput));
-        ImGui::Spacing();
-        ImGui::Spacing();
-        ImGui::Spacing();
-        if (ImGui::Button("Generate Atlas")) AtlasTextures(AtlasDimensions[0], AtlasDimensions[1], TileDimensions[0], TileDimensions[1]);
-        ImGui::PopItemWidth();
-        ImGui::End();
-
         
         shape->setFillColor(sf::Color(
         static_cast<sf::Uint8>(circleColor[0] * 255),
         static_cast<sf::Uint8>(circleColor[1] * 255),
         static_cast<sf::Uint8>(circleColor[2] * 255),
-         static_cast<sf::Uint8>(*opacity * 255)));
+         static_cast<sf::Uint8>(opacity * 255)));
 
         
         window->clear(sf::Color(200, 200, 200, 255));
@@ -200,7 +150,6 @@ PaintWindow::PaintWindow()
         ImGui::SFML::Render(*window);
         window->display();
     }
-    ImGui::SFML::Shutdown();
 }
 
 
@@ -233,8 +182,7 @@ void PaintWindow::DrawBetweenPoints(sf::Vector2<int> a, sf::Vector2<int> b)
     }
 }
 
-
-sf::RenderTexture* PaintWindow::AtlasTextures(int rows, int columns, int imageWidth, int imageHeight)
+void PaintWindow::AtlasTextures(int rows, int columns, int imageWidth, int imageHeight)
 {
     std::filesystem::path in = AtlasInput;
     std::string out = AtlasOutput;
@@ -260,7 +208,7 @@ sf::RenderTexture* PaintWindow::AtlasTextures(int rows, int columns, int imageWi
         
 
         sf::Image Image;
-        if (!Image.loadFromFile(entry.path().string())) return nullptr;
+        if (!Image.loadFromFile(entry.path().string())) break;
         
         sf::Vector2u size = Image.getSize();
         sf::Texture Tex;
@@ -282,7 +230,6 @@ sf::RenderTexture* PaintWindow::AtlasTextures(int rows, int columns, int imageWi
 
     Atlas->display();
     Atlas->getTexture().copyToImage().saveToFile(out + "/" + GetDateAndTime() + "_ATLAS.png");
-    return Atlas;
 }
 
 RenderLayer* PaintWindow::NewLayer(int width, int height)
@@ -293,12 +240,10 @@ RenderLayer* PaintWindow::NewLayer(int width, int height)
     return layer;
 }
 
-
 float PaintWindow::Lerp(float a, float b, float t)
 {
     return a + (b - a) * t;
 }
-
 
 void PaintWindow::DrawToLayer(RenderLayer* layer)
 {
@@ -319,7 +264,7 @@ void PaintWindow::DrawToLayer(RenderLayer* layer)
 bool PaintWindow::SaveImage()
 {
     sf::RenderTexture image;
-    image.create(800, 600);
+    image.create(Width, Height);
     for (auto layer : Layers)
     {
         image.draw(*layer);
@@ -333,4 +278,128 @@ bool PaintWindow::SaveImage()
     
     return image.getTexture().copyToImage().saveToFile("Saved/" + GetDateAndTime() + ".png");
     
+}
+
+void PaintWindow::UI_Debug()
+{
+    ImGui::Begin("Debug Window");
+    ImGui::Text("Mouse Position:");
+    ImGui::Text("X: %i   Y: %i", mousePos.x, mousePos.y);
+        
+        
+    std::string Current = "Layer ";
+    Current.append(std::to_string(currentLayer));
+        
+        
+    if (ImGui::BeginCombo("Layers", Current.c_str()))
+    {
+        for (unsigned int n = 0; n < Layers.size(); n++)
+        {
+            std::string Option = "Layer ";
+            Option.append(std::to_string(n));
+            bool is_selected = (Layers[currentLayer] == Layers[n]);
+                
+            if (ImGui::Selectable(Option.c_str(), is_selected))
+                currentLayer = n;
+                
+            if (is_selected)
+            {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+        
+        
+    if (ImGui::Button("New Layer"))
+    {
+        NewLayer(Width, Height);
+    }
+
+    ImGui::Text("Layer Count: %i", Layers.size());
+    ImGui::End();
+}
+
+void PaintWindow::UI_ColorPicker()
+{
+    ImGui::Begin("Colour Picker");
+    ImGui::ColorPicker3("Colour", circleColor);
+    ImGui::SliderFloat("Opacity", &opacity, 0.f, 1.f);
+    ImGui::End();
+}
+
+void PaintWindow::UI_Atlas()
+{
+
+        ImGui::Begin("Texture Atlas");
+            ImGui::PushItemWidth(100);
+                ImGui::Text("Path to image folder");
+                ImGui::InputText("  ", AtlasInput, IM_ARRAYSIZE(AtlasInput));
+                    ImGui::Spacing();
+                    ImGui::Spacing();
+                    ImGui::Spacing();
+                ImGui::Text("Atlas Dimensions");
+                ImGui::DragInt2("Rows * Columns", AtlasDimensions, 1, 1, 20);
+                    ImGui::Spacing();
+                ImGui::Text("Tile Dimensions");
+                ImGui::DragInt2("x * y", TileDimensions, 1, 1, 4096);
+                    ImGui::Spacing();
+                    ImGui::Spacing();
+                ImGui::Text("Resolution Scale");
+                ImGui::DragFloat("    ", &AtlasResolutionScale, 0.05, 0.1, 2);
+                    ImGui::Spacing();
+                    ImGui::Spacing();
+                ImGui::Text("Atlas Output Folder");
+                ImGui::InputText(" ", AtlasOutput, IM_ARRAYSIZE(AtlasOutput));
+                    ImGui::Spacing();
+                    ImGui::Spacing();
+                    ImGui::Spacing();
+                if (ImGui::Button("Generate Atlas")) AtlasTextures(AtlasDimensions[0], AtlasDimensions[1], TileDimensions[0], TileDimensions[1]) ;
+            ImGui::PopItemWidth();
+        ImGui::End();
+}
+
+void PaintWindow::UI_Tools()
+{
+    ImGui::Begin("Tools");
+
+    bool update = false;
+    if (CurrentTool == Tools::EFREEDRAW)
+    {
+        update = true;
+        ImGui::PushStyleColor(ImGuiCol_::ImGuiCol_Button, ActiveButtonColour);
+    }
+    if(ImGui::Button("Draw")) SetTool(Tools::EFREEDRAW);
+    if (update) ImGui::PopStyleColor();
+
+    update = false;
+    if (CurrentTool == Tools::ELINE)
+    {
+        update = true;
+        ImGui::PushStyleColor(ImGuiCol_::ImGuiCol_Button, ActiveButtonColour);
+    }
+    ImGui::SameLine();
+    if(ImGui::Button("Line")) SetTool(Tools::ELINE);
+    if (update) ImGui::PopStyleColor();
+
+    update = false;
+    if (CurrentTool == Tools::ECIRCLE)
+    {
+        update = true;
+        ImGui::PushStyleColor(ImGuiCol_::ImGuiCol_Button, ActiveButtonColour);
+    }
+    if(ImGui::Button("Circle")) SetTool(Tools::ECIRCLE);
+    if (update) ImGui::PopStyleColor();
+
+    update = false;
+    if (CurrentTool == Tools::ERECTANGLE)
+    {
+        update = true;
+        ImGui::PushStyleColor(ImGuiCol_::ImGuiCol_Button, ActiveButtonColour);
+    }
+    ImGui::SameLine();
+    if(ImGui::Button("Rect")) SetTool(Tools::ERECTANGLE);
+    if (update) ImGui::PopStyleColor();
+    ImGui::End();
 }

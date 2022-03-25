@@ -13,6 +13,7 @@ RenderLayer::RenderLayer(float width, float height)
 }
 
 
+
 void RenderLayer::UpdateTexture()
 {
     setTexture(GetRenderTexture()->getTexture());
