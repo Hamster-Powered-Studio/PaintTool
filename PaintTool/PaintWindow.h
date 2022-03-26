@@ -31,15 +31,22 @@ public:
 private:
     
     sf::RenderTexture renderTexture;
+    sf::CircleShape circle;
+    sf::RectangleShape rectangle;
+    //sf::RectangleShape line;
     sf::Sprite sprite;
     sf::Vector2<int> mousePos;
     sf::Shape* shape;
     sf::RenderWindow* window;
-    std::queue<sf::Vector2<int>> mouseLocations;
+    std::queue<sf::Vector2<int>> lineMouseLocations;
+    std::vector<sf::Vector2<int>> actionMouseLocations;
+    sf::VertexArray line = sf::VertexArray(sf::Lines, 2);
     sf::Clock deltaClock;
     ImGuiIO* io;
     Tools CurrentTool = Tools::EFREEDRAW;
     ImVec4 ActiveButtonColour = ImColor(27, 54, 74);
+    bool mouseDoOnce;
+    bool fillShape;
 
     int Width = 1600;
     int Height = 900;
@@ -62,13 +69,22 @@ private:
     char AtlasOutput[128] = "Saved/Out";
     float AtlasResolutionScale = 1.f;
 
+    sf::Color colour;
+    
     void AtlasTextures(int rows, int columns, int imageWidth, int imageHeight);
     void UI_Debug();
     void UI_Tools();
     void UI_ColorPicker();
     void UI_Atlas();
     void WindowLoop();
-    
+
+    float Dot(sf::Vector2<int> a, sf::Vector2<int> b);
+
+    float Angle(sf::Vector2<int> a, sf::Vector2<int> b);
+
+    float Length(sf::Vector2<int> a);
+    float Det(sf::Vector2<int> a, sf::Vector2<int> b);
+
     RenderLayer* NewLayer(int width, int height);
     
     static float Lerp(float a, float b, float t);

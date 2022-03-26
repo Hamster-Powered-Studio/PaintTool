@@ -50,7 +50,11 @@ void PaintWindow::WindowLoop()
 {
     while (window->isOpen())
     {
-        
+        colour = sf::Color(
+               static_cast<sf::Uint8>(circleColor[0] * 255),
+              static_cast<sf::Uint8>(circleColor[1] * 255),
+              static_cast<sf::Uint8>(circleColor[2] * 255),
+              static_cast<sf::Uint8>(opacity * 255));
         
         sf::Event event{};
         while (window->pollEvent(event))
@@ -72,15 +76,30 @@ void PaintWindow::WindowLoop()
             if (event.type == sf::Event::MouseButtonReleased)
             {
                 MouseDown = false;
-                while (!mouseLocations.empty())
-                    mouseLocations.pop();
+                while (!lineMouseLocations.empty())
+                    lineMouseLocations.pop();
+                mouseDoOnce = false;
+                
+
+                switch (CurrentTool)
+                {
+                    
+                case Tools::EFREEDRAW: break;
+                case Tools::ECIRCLE: Layers[currentLayer]->GetRenderTexture()->draw(circle); break;
+                case Tools::ERECTANGLE: Layers[currentLayer]->GetRenderTexture()->draw(rectangle); break;
+                case Tools::ELINE: if (!actionMouseLocations.empty())DrawBetweenPoints(actionMouseLocations.front(), actionMouseLocations.back()); break;
+                default: ;
+                }
+                actionMouseLocations.clear();
             }
 
             if (event.type == sf::Event::MouseWheelMoved)
             {
-                freedrawSize += static_cast<float>(event.mouseWheel.delta);
-                if (freedrawSize < 1) freedrawSize = 1;
-                dynamic_cast<sf::CircleShape*>(shape)->setRadius(freedrawSize);
+
+                    freedrawSize += static_cast<float>(event.mouseWheel.delta);
+                    if (freedrawSize < 1) freedrawSize = 1;
+                    dynamic_cast<sf::CircleShape*>(shape)->setRadius(freedrawSize);
+
                 
             }
 
@@ -89,10 +108,6 @@ void PaintWindow::WindowLoop()
                 if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LControl) && sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
                 {
                     SaveImage();
-                }
-                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LControl) && sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D))
-                {
-                    AtlasTextures(AtlasDimensions[0], AtlasDimensions[1], 823, 1180);
                 }
             }
 
@@ -113,10 +128,64 @@ void PaintWindow::WindowLoop()
         }
         else mouseMoved = false;
         
-        
-        if (MouseDown && mouseMoved)
+
+        if (MouseDown)
         {
-            DrawToLayer(Layers[currentLayer]);
+            actionMouseLocations.push_back(mousePos);
+            sf::Vector2<int> scale = (actionMouseLocations.back() - actionMouseLocations.front()) ;
+            switch (CurrentTool)
+            {
+            case Tools::EFREEDRAW:
+                {
+                    if (mouseMoved) DrawToLayer(Layers[currentLayer]);
+                    break;
+                }
+            case Tools::ELINE:
+                {
+                    /*
+                    float scaleFactor = Length(scale);
+                    line.setSize(sf::Vector2f(10, freedrawSize));
+                    line.setFillColor(colour);
+                    float angle = (Angle( actionMouseLocations.back() - actionMouseLocations.front(), actionMouseLocations.back())) * (180/3.141);
+                    line.setRotation(angle);
+                    std::cout << angle << std::endl;
+                    line.setPosition(actionMouseLocations.front().x, actionMouseLocations.front().y);
+                    */
+                   // lines(sf::LinesStrip, 2)
+                   // line.Line
+                    shape->setPosition(sf::Vector2f(actionMouseLocations.front().x - freedrawSize, actionMouseLocations.front().y - freedrawSize));
+                    line[0].position = sf::Vector2f(actionMouseLocations.front());
+                    line[1].position = sf::Vector2f(actionMouseLocations.back());
+                    line[0].color = colour;
+                    line[1].color = colour;
+                    break;
+                }
+            case Tools::ERECTANGLE:
+                {
+                    rectangle.setSize(static_cast<sf::Vector2f>(scale));
+                    fillShape ? rectangle.setFillColor(colour) :rectangle.setFillColor(sf::Color::Transparent);
+                    rectangle.setOutlineColor(colour);
+                    rectangle.setOutlineThickness((freedrawSize * 2));
+                    //rectangle.setOutlineThickness(1);
+                    rectangle.setPosition(actionMouseLocations.front().x, actionMouseLocations.front().y);
+                    break;
+                }
+            case Tools::ECIRCLE:
+                {
+                    circle.setRadius(1);
+                    circle.setScale(scale.x * 0.5, scale.y * 0.5);
+                    float scaleFactor = (sqrt(circle.getScale().x * circle.getScale().x + circle.getScale().y * circle.getScale().y));
+                    fillShape ? circle.setFillColor(colour) : circle.setFillColor(sf::Color::Transparent);
+                    circle.setOutlineColor(colour);
+                    circle.setOutlineThickness((freedrawSize * 2) / scaleFactor);
+                    circle.setPointCount(16 + (scaleFactor * 0.2));
+                    
+                    circle.setPosition(actionMouseLocations.front().x, actionMouseLocations.front().y);
+                    
+                    break;
+                }
+            }
+            mouseDoOnce = true;
         }
         
         ImGui::SFML::Update(*window, deltaClock.restart());
@@ -127,32 +196,64 @@ void PaintWindow::WindowLoop()
         UI_Debug();
         
         
-        shape->setFillColor(sf::Color(
-        static_cast<sf::Uint8>(circleColor[0] * 255),
-        static_cast<sf::Uint8>(circleColor[1] * 255),
-        static_cast<sf::Uint8>(circleColor[2] * 255),
-         static_cast<sf::Uint8>(opacity * 255)));
+        shape->setFillColor(colour);
 
         
         window->clear(sf::Color(200, 200, 200, 255));
 
-        shape->setPosition(static_cast<float>(mousePos.x) - freedrawSize, static_cast<float>(mousePos.y) - freedrawSize);
+        if ((CurrentTool == Tools::ELINE && !MouseDown) || CurrentTool != Tools::ELINE) shape->setPosition(static_cast<float>(mousePos.x) - freedrawSize, static_cast<float>(mousePos.y) - freedrawSize);
         
 
         for (RenderLayer* rt : Layers)
         {
             rt->UpdateTexture();
+            rt->GetRenderTexture()->display();
             window->draw(*rt);
         }
+        
 
-        window->draw(*shape);
+        switch (CurrentTool)
+        {
+        case Tools::EFREEDRAW: {window->draw(*shape); break;}
+        case Tools::ECIRCLE: {window->draw(circle); break;}
+        case Tools::ERECTANGLE: {window->draw(rectangle); break;}
+        case Tools::ELINE: {window->draw(line); window->draw(*shape); break;}
+        default: ;
+        }
 
         ImGui::SFML::Render(*window);
         window->display();
     }
 }
 
+float PaintWindow::Dot(sf::Vector2<int> a, sf::Vector2<int> b)
+{
+    return (a.x * b.x) + (a.y * b.y);
+}
 
+float PaintWindow::Angle(sf::Vector2<int> a, sf::Vector2<int> b)
+{
+   // return atan2(Det(b, a), Dot(a, b));
+    return acos(Dot(a, b) / (Length(a) * Length(b)));
+}
+
+float PaintWindow::Length(sf::Vector2<int> a)
+{
+    return sqrt((a.x * a.x) + (a.y * a.y));
+}
+
+float PaintWindow::Det(sf::Vector2<int> a, sf::Vector2<int> b)
+{
+    return (a.x * b.y) - (a.y * b.x);
+}
+
+/*
+bool PaintWindow::Cross(sf::Vector2<int> a, sf::Vector2<int> b)
+{
+    int z = a.x * b.y - a.y * b.y;
+    
+}
+*/
 std::string PaintWindow::GetDateAndTime() const
 {
     std::time_t t = std::time(0);
@@ -248,17 +349,17 @@ float PaintWindow::Lerp(float a, float b, float t)
 void PaintWindow::DrawToLayer(RenderLayer* layer)
 {
     layer->GetRenderTexture()->draw(*shape);
-    mouseLocations.push(mousePos);
+    lineMouseLocations.push(mousePos);
     
-    if (mouseLocations.size() >= 2)
+    if (lineMouseLocations.size() >= 2)
     {
-        sf::Vector2<int> p1 = mouseLocations.front();
-        mouseLocations.pop();
-        sf::Vector2<int> p2 = mouseLocations.front();
+        sf::Vector2<int> p1 = lineMouseLocations.front();
+        lineMouseLocations.pop();
+        sf::Vector2<int> p2 = lineMouseLocations.front();
         DrawBetweenPoints(p2, p1);
     }
     
-    layer->GetRenderTexture()->display();
+    //layer->GetRenderTexture()->display();
 }
 
 bool PaintWindow::SaveImage()
@@ -401,5 +502,7 @@ void PaintWindow::UI_Tools()
     ImGui::SameLine();
     if(ImGui::Button("Rect")) SetTool(Tools::ERECTANGLE);
     if (update) ImGui::PopStyleColor();
+
+    ImGui::Checkbox("Fill Shape", &fillShape);
     ImGui::End();
 }
