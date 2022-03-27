@@ -42,6 +42,7 @@ private:
     std::vector<sf::Vector2<int>> actionMouseLocations;
     sf::VertexArray line = sf::VertexArray(sf::Lines, 2);
     sf::Clock deltaClock;
+    
     ImGuiIO* io;
     Tools CurrentTool = Tools::EFREEDRAW;
     ImVec4 ActiveButtonColour = ImColor(27, 54, 74);
@@ -68,12 +69,16 @@ private:
     char AtlasInput[128] = "Saved/In";
     char AtlasOutput[128] = "Saved/Out";
     float AtlasResolutionScale = 1.f;
-
+    bool panning = false;
+    
+    sf::View view;
+    
     sf::Color colour;
     
     void AtlasTextures(int rows, int columns, int imageWidth, int imageHeight);
     void UI_Debug();
     void UI_Tools();
+    void UI_Instructions();
     void UI_ColorPicker();
     void UI_Atlas();
     void WindowLoop();

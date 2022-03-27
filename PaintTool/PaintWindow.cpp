@@ -18,8 +18,12 @@ PaintWindow::PaintWindow()
 {
     shape = new sf::CircleShape(freedrawSize);
     window = new sf::RenderWindow(sf::VideoMode(Width, Height), "Paint Tool v0.1");
+
+    view.setCenter(Width/2, Height/2);
+    view.setSize(Width, Height);
     
     window->setActive();
+    
     
     ImGui::SFML::Init(*window);
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -27,7 +31,8 @@ PaintWindow::PaintWindow()
     
     io = &ImGui::GetIO();
     
-    NewLayer(Width, Width)->GetRenderTexture()->clear(sf::Color::White);
+    RenderLayer* layer = NewLayer(Width,  Height);
+    layer->GetRenderTexture()->clear(sf::Color::White);
     window->setFramerateLimit(60);
 
     WindowLoop();
@@ -55,6 +60,9 @@ void PaintWindow::WindowLoop()
               static_cast<sf::Uint8>(circleColor[1] * 255),
               static_cast<sf::Uint8>(circleColor[2] * 255),
               static_cast<sf::Uint8>(opacity * 255));
+
+        window->setView(window->getDefaultView());
+        window->setView(view);
         
         sf::Event event{};
         while (window->pollEvent(event))
@@ -68,8 +76,16 @@ void PaintWindow::WindowLoop()
 
             if (event.type == sf::Event::MouseButtonPressed)
             {
-                if (io->WantCaptureMouse) break;
-                MouseDown = true;
+                if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
+                {
+                    if (io->WantCaptureMouse) break;
+                    MouseDown = true;
+                }
+                if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Middle))
+                {
+                    panning = true;
+                }
+                
             }
                 
 
@@ -79,26 +95,40 @@ void PaintWindow::WindowLoop()
                 while (!lineMouseLocations.empty())
                     lineMouseLocations.pop();
                 mouseDoOnce = false;
-                
+                panning = false;
 
                 switch (CurrentTool)
                 {
                     
                 case Tools::EFREEDRAW: break;
                 case Tools::ECIRCLE: Layers[currentLayer]->GetRenderTexture()->draw(circle); break;
-                case Tools::ERECTANGLE: Layers[currentLayer]->GetRenderTexture()->draw(rectangle); break;
+                case Tools::ERECTANGLE:
+                    {
+                        //rectangle.setPosition(rectangle.getPosition().x, rectangle.getPosition().y);
+                        Layers[currentLayer]->GetRenderTexture()->draw(rectangle);
+                        break;
+                    }
                 case Tools::ELINE: if (!actionMouseLocations.empty())DrawBetweenPoints(actionMouseLocations.front(), actionMouseLocations.back()); break;
                 default: ;
                 }
                 actionMouseLocations.clear();
             }
 
-            if (event.type == sf::Event::MouseWheelMoved)
+            if (event.type == sf::Event::MouseWheelMoved && !io->WantCaptureMouse)
             {
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::LAlt))
+                {
+                    int scale = event.mouseWheel.delta * -20;
+                    float aratio = (float)window->getSize().y / (float)window->getSize().x ;
+                    view.setSize(( (float)view.getSize().x +  scale), ((float)view.getSize().y + aratio * scale));
 
+                }
+                else
+                {
                     freedrawSize += static_cast<float>(event.mouseWheel.delta);
                     if (freedrawSize < 1) freedrawSize = 1;
-                    dynamic_cast<sf::CircleShape*>(shape)->setRadius(freedrawSize);
+                }
+                    
 
                 
             }
@@ -113,18 +143,18 @@ void PaintWindow::WindowLoop()
 
             if (event.type == sf::Event::Resized)
             {
-                // update the view to the new size of the window
-                sf::FloatRect visibleArea(0, 0, (float)(event.size.width), (float)(event.size.height));
-                window->setView(sf::View(visibleArea));
+                sf::FloatRect visibleArea(0, 0, event.size.width, event.size.height);
+                view.reset(visibleArea);
             }
         }
 
-
+        
         
         if (!io->WantCaptureMouse && sf::Mouse::getPosition(*window) != mousePos)
         {
             mouseMoved = true;
-            mousePos = sf::Mouse::getPosition(*window);
+            sf::Vector2i pixelPos = sf::Mouse::getPosition(*window);
+            mousePos = (sf::Vector2i)window->mapPixelToCoords(pixelPos, view);
         }
         else mouseMoved = false;
         
@@ -137,7 +167,7 @@ void PaintWindow::WindowLoop()
             {
             case Tools::EFREEDRAW:
                 {
-                    if (mouseMoved) DrawToLayer(Layers[currentLayer]);
+                    DrawToLayer(Layers[currentLayer]);
                     break;
                 }
             case Tools::ELINE:
@@ -165,7 +195,7 @@ void PaintWindow::WindowLoop()
                     rectangle.setSize(static_cast<sf::Vector2f>(scale));
                     fillShape ? rectangle.setFillColor(colour) :rectangle.setFillColor(sf::Color::Transparent);
                     rectangle.setOutlineColor(colour);
-                    rectangle.setOutlineThickness((freedrawSize * 2));
+                    fillShape ? rectangle.setOutlineThickness((0)) : rectangle.setOutlineThickness((freedrawSize * 2));
                     //rectangle.setOutlineThickness(1);
                     rectangle.setPosition(actionMouseLocations.front().x, actionMouseLocations.front().y);
                     break;
@@ -177,7 +207,7 @@ void PaintWindow::WindowLoop()
                     float scaleFactor = (sqrt(circle.getScale().x * circle.getScale().x + circle.getScale().y * circle.getScale().y));
                     fillShape ? circle.setFillColor(colour) : circle.setFillColor(sf::Color::Transparent);
                     circle.setOutlineColor(colour);
-                    circle.setOutlineThickness((freedrawSize * 2) / scaleFactor);
+                    fillShape ? circle.setOutlineThickness(0) : circle.setOutlineThickness((freedrawSize * 2) / scaleFactor);
                     circle.setPointCount(16 + (scaleFactor * 0.2));
                     
                     circle.setPosition(actionMouseLocations.front().x, actionMouseLocations.front().y);
@@ -187,6 +217,12 @@ void PaintWindow::WindowLoop()
             }
             mouseDoOnce = true;
         }
+        if (panning)
+        {
+            actionMouseLocations.push_back(mousePos);
+            sf::Vector2i deltaMove = actionMouseLocations.front() - actionMouseLocations.back();
+            view.move(deltaMove.x, deltaMove.y);
+        }
         
         ImGui::SFML::Update(*window, deltaClock.restart());
         
@@ -194,33 +230,35 @@ void PaintWindow::WindowLoop()
         UI_ColorPicker();
         UI_Tools();
         UI_Debug();
+        UI_Instructions();
         
         
         shape->setFillColor(colour);
-
+        dynamic_cast<sf::CircleShape*>(shape)->setRadius(freedrawSize);
         
         window->clear(sf::Color(200, 200, 200, 255));
-
+        //window->setView(window->getDefaultView());
         if ((CurrentTool == Tools::ELINE && !MouseDown) || CurrentTool != Tools::ELINE) shape->setPosition(static_cast<float>(mousePos.x) - freedrawSize, static_cast<float>(mousePos.y) - freedrawSize);
         
-
+        
+        
         for (RenderLayer* rt : Layers)
         {
             rt->UpdateTexture();
             rt->GetRenderTexture()->display();
-            window->draw(*rt);
+            if (rt->visible) window->draw(*rt);
         }
         
-
+        
         switch (CurrentTool)
         {
         case Tools::EFREEDRAW: {window->draw(*shape); break;}
-        case Tools::ECIRCLE: {window->draw(circle); break;}
-        case Tools::ERECTANGLE: {window->draw(rectangle); break;}
-        case Tools::ELINE: {window->draw(line); window->draw(*shape); break;}
+        case Tools::ECIRCLE: {if (MouseDown) window->draw(circle); break;}
+        case Tools::ERECTANGLE: { if (MouseDown) window->draw(rectangle); break;}
+        case Tools::ELINE: {if (MouseDown) window->draw(line); window->draw(*shape); break;}
         default: ;
         }
-
+        
         ImGui::SFML::Render(*window);
         window->display();
     }
@@ -247,13 +285,6 @@ float PaintWindow::Det(sf::Vector2<int> a, sf::Vector2<int> b)
     return (a.x * b.y) - (a.y * b.x);
 }
 
-/*
-bool PaintWindow::Cross(sf::Vector2<int> a, sf::Vector2<int> b)
-{
-    int z = a.x * b.y - a.y * b.y;
-    
-}
-*/
 std::string PaintWindow::GetDateAndTime() const
 {
     std::time_t t = std::time(0);
@@ -368,7 +399,7 @@ bool PaintWindow::SaveImage()
     image.create(Width, Height);
     for (auto layer : Layers)
     {
-        image.draw(*layer);
+        if (layer->visible) image.draw(*layer);
     }
     image.display();
 
@@ -383,7 +414,7 @@ bool PaintWindow::SaveImage()
 
 void PaintWindow::UI_Debug()
 {
-    ImGui::Begin("Debug Window");
+    ImGui::Begin("Info");
     ImGui::Text("Mouse Position:");
     ImGui::Text("X: %i   Y: %i", mousePos.x, mousePos.y);
         
@@ -411,14 +442,14 @@ void PaintWindow::UI_Debug()
         ImGui::EndCombo();
     }
 
-        
-        
+    ImGui::Checkbox("Visible", &Layers[currentLayer]->visible);
+    
     if (ImGui::Button("New Layer"))
     {
         NewLayer(Width, Height);
     }
+    
 
-    ImGui::Text("Layer Count: %i", Layers.size());
     ImGui::End();
 }
 
@@ -504,5 +535,29 @@ void PaintWindow::UI_Tools()
     if (update) ImGui::PopStyleColor();
 
     ImGui::Checkbox("Fill Shape", &fillShape);
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Spacing();
+    
+    ImGui::SliderFloat("Thickness", &freedrawSize, 1, 60);
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Spacing();
+    
+    if (ImGui::Button("Save Image"))
+    {
+        SaveImage();
+    }
+    ImGui::End();
+}
+
+void PaintWindow::UI_Instructions()
+{
+    ImGui::Begin("Instructions");
+    ImGui::Text("Scroll to change Thickness");
+    ImGui::Text("Alt + Scroll to zoom");
+    ImGui::Text("Middle mouse to pan canvas");
     ImGui::End();
 }

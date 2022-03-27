@@ -14,5 +14,7 @@ public:
     sf::RenderTexture* GetRenderTexture() {return RT;}
 
     void UpdateTexture();
-    
+
+    bool visible = true;
+    void SetVisible(bool NewVisible) { visible = NewVisible; }
 };
